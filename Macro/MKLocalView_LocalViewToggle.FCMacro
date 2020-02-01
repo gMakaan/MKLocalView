@@ -1,0 +1,123 @@
+
+# TODO ghost filter
+
+# ========= setup ==========
+spreadsheetName = "MKLocalView_hided_objects_by_LocalView"
+filterName = "MKLocalView_ghost_filter_enabled"
+showLinkedObjects = False # linked geom points to selected also showed, otherwise not
+
+# ========= BEGIN ==========
+sel = FreeCADGui.Selection.getSelection()
+
+# ========= intialization ==========
+spreadsheet_finded = False
+for i in App.ActiveDocument.Objects:
+	if i.Name == spreadsheetName:
+		spreadsheet_finded = True
+		break
+
+filter_finded = False
+for i in App.ActiveDocument.Objects:
+	if i.Name == filterName:
+		filter_finded = True
+		break
+
+if spreadsheet_finded == False: # create service spreadsheet
+	App.activeDocument().Tip = App.activeDocument().addObject('Spreadsheet::Sheet', spreadsheetName)
+	spreadsheetObj = App.activeDocument().getObject(spreadsheetName)
+	spreadsheetObj.setStyle('A1:F1', 'bold')
+	spreadsheetObj.set('A1', 'Obj Name')
+	spreadsheetObj.set('B1', 'Obj Label')
+	if filter_finded:
+		filterObj = App.activeDocument().getObject(filterName)
+		spreadsheetObj.set('C1', 'Transparency Value')
+		spreadsheetObj.set('D1', 'Display Mode Value')
+	spreadsheetObj.set('F1', 'Count')
+
+	# ========= Enter LocalView (hide unselected) ==========
+
+	# hide exclusion list generation
+	exclusions = []
+	# exclude spreadsheet
+	exclusions.append(spreadsheetName)
+	# exclude group objects itself (change it visibility changes linked visibility also)
+	for i in App.ActiveDocument.Objects:
+		if i.TypeId == 'App::DocumentObjectGroup': exclusions.append(i.Name)
+	for i in sel:
+		# exclude selected
+		exclusions.append(i.Name)
+		# exclude parent containers and groups belongs to selection recursively
+		parents = i.InListRecursive # it can contain linked geom and something other
+		for ii in parents:
+			if showLinkedObjects:
+				exclusions.append(ii.Name)
+			else:
+				if "Group" in ii.PropertiesList: exclusions.append(ii.Name) # TODO it still shows containers with links
+		# if group/container selected directly - exclude it childrens recursively
+		if "Group" in i.PropertiesList:
+			childs = i.OutListRecursive
+			for ii in childs:
+				exclusions.append(ii.Name)
+
+	# hiding not excluded visible objects (or ghost them)
+	count = 0
+	for i in App.ActiveDocument.Objects:
+		name = i.Name
+
+		# exclude exclusion list
+		if name in exclusions: continue
+
+		# ghost mode, object can be ghosted and not excluded -> ghost it and store in spreadsheet
+		if filter_finded:
+			mark_to_add_by_transparency = False
+			mark_to_add_by_displaymode = False
+			if "Transparency" in Gui.ActiveDocument.getObject(name).PropertiesList:
+				if Gui.ActiveDocument.getObject(name).Transparency != int(filterObj.get('A2')): mark_to_add_by_transparency = True
+			if "DisplayMode" in Gui.ActiveDocument.getObject(name).PropertiesList:
+				if 'Shaded' in Gui.ActiveDocument.getObject(name).listDisplayModes():
+					if Gui.ActiveDocument.getObject(name).DisplayMode != 'Shaded': mark_to_add_by_displaymode = True
+
+			if mark_to_add_by_transparency or mark_to_add_by_displaymode:
+				count = count + 1
+				spreadsheetObj.set('A' + str(count+1), name)
+				spreadsheetObj.set('B' + str(count+1), i.Label)
+				if mark_to_add_by_transparency:
+					spreadsheetObj.set('C' + str(count+1), str(Gui.ActiveDocument.getObject(name).Transparency))
+					Gui.ActiveDocument.getObject(name).Transparency = int(filterObj.get('A2'))
+				if mark_to_add_by_displaymode:
+					spreadsheetObj.set('D' + str(count+1), str(Gui.ActiveDocument.getObject(name).DisplayMode))
+					Gui.ActiveDocument.getObject(name).DisplayMode = 'Shaded'
+
+		else: # no filter, object visible and not excluded -> hide it and store in spreadsheet
+			if Gui.ActiveDocument.getObject(name).Visibility == True:
+				count = count + 1
+				spreadsheetObj.set('A' + str(count+1), name)
+				spreadsheetObj.set('B' + str(count+1), i.Label)
+				Gui.ActiveDocument.getObject(name).Visibility = False
+
+	spreadsheetObj.set('F2', str(count)) # store object count
+
+else : # spreadsheet existed
+	spreadsheetObj = App.activeDocument().getObject(spreadsheetName)
+
+	if filter_finded:
+		filterObj = App.activeDocument().getObject(filterName)
+
+	# ========= Exit LocalView (restore hided) ==========
+
+	count = int(spreadsheetObj.get('F2'))
+	for i in range(2, count+2):
+		name = spreadsheetObj.get('A' + str(i))
+
+		if filter_finded: # de-ghost if object still exist
+			obj = Gui.ActiveDocument.getObject(name)
+			if obj:
+				if spreadsheetObj.getContents('C' + str(i)) != '': Gui.ActiveDocument.getObject(name).Transparency = int(spreadsheetObj.get('C' + str(i)))
+				if spreadsheetObj.getContents('D' + str(i)) != '': Gui.ActiveDocument.getObject(name).DisplayMode = spreadsheetObj.get('D' + str(i))
+		else: # restore visibility if object still exist
+			obj = Gui.ActiveDocument.getObject(name)
+			if obj: Gui.ActiveDocument.getObject(name).Visibility = True
+
+	App.ActiveDocument.removeObject(spreadsheetName)
+
+App.activeDocument().recompute()

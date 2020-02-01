@@ -1,0 +1,35 @@
+
+# ========= setup ==========
+spreadsheetName = "MKLocalView_hided_objects_by_LocalView"
+filterName = "MKLocalView_ghost_filter_enabled"
+filterValue = 90 # transparency percent
+
+# ========= BEGIN ==========
+
+# ========= intialization ==========
+spreadsheet_finded = False
+for i in App.ActiveDocument.Objects:
+	if i.Name == spreadsheetName:
+		spreadsheet_finded = True
+		break
+
+filter_finded = False
+for i in App.ActiveDocument.Objects:
+	if i.Name == filterName:
+		filter_finded = True
+		break
+
+if spreadsheet_finded == False: # switch only in normal mode (no LocalView enabled)
+	if filter_finded == False: # create service spreadsheet
+		# ========= Filter on ==========
+		App.activeDocument().Tip = App.activeDocument().addObject('Spreadsheet::Sheet', filterName)
+		filterObj = App.activeDocument().getObject(filterName)
+		filterObj.setStyle('A1', 'bold')
+		filterObj.set('A1', 'Filter value')
+		filterObj.set('A2', str(filterValue))
+	
+	else : # spreadsheet existed
+		# ========= Filter off ==========
+		App.ActiveDocument.removeObject(filterName)
+	
+	App.activeDocument().recompute()
